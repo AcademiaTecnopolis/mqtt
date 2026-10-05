@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel Tecnópolis - ESP32</title>
+  <!-- Cargamos la librería MQTT.js desde CDN -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f4f7f6;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      background: #ffffff;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+      width: 100%;
+      max-width: 450px;
+    }
+    h1 { text-align: center; color: #333; margin-bottom: 5px; }
+    .status-container { text-align: center; margin-bottom: 20px; }
+    .status {
+      font-weight: bold;
+      padding: 6px 14px;
+      border-radius: 20px;
+      display: inline-block;
+      font-size: 0.9em;
+    }
+    .online { background-color: #d4edda; color: #155724; }
+    .offline { background-color: #f8d7da; color: #721c24; }
+    
+    .card {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+    .card h3 { margin-top: 0; color: #495057; font-size: 1.1em; }
+    
+    .sensor-data {
+      display: flex;
+      justify-content: space-around;
+      text-align: center;
+    }
+    .value { font-size: 1.8em; font-weight: bold; color: #007bff; }
+    .unit { font-size: 0.6em; color: #6c757d; }
+
+    .btn-group { display: flex; gap: 10px; }
+    button {
+      flex: 1;
+      padding: 12px;
+      font-size: 1em;
+      font-weight: bold;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-on { background-color: #28a745; color: white; }
+    .btn-on:hover { background-color: #218838; }
+    .btn-off { background-color: #dc3545; color: white; }
+    .btn-off:hover { background-color: #c82333; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>Panel Tecnópolis</h1>
+    <div class="status-container">
+      Estado: <span id="status" class="status offline">Desconectado</span>
+    </div>
+
+    <!-- Telemetría DHT11 -->
+    <div class="card">
+      <h3>Sensor DHT11</h3>
+      <div class="sensor-data">
+        <div>
+          <div>Temperatura</div>
+          <div class="value"><span id="temp">--</span><span class="unit"> °C</span></div>
+        </div>
+        <div>
+          <div>Humedad</div>
+          <div class="value"><span id="hum">--</span><span class="unit"> %</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Control del LED -->
+    <div class="card">
+      <h3>Control de Actuador</h3>
+      <div class="btn-group">
+        <button class="btn-on" onclick="controlLed('ON')">ENCENDER LED</button>
+        <button class="btn-off" onclick="controlLed('OFF')">APAGAR LED</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. Configuración de tópicos exactos según tu código de Arduino
+    const TOPIC_LED  = 'tecnopolis/led';
+    const TOPIC_TEMP = 'tecnopolis/temperatura';
+    const TOPIC_HUM  = 'tecnopolis/humedad';
+
+    // 2. Conexión WebSocket al broker público HiveMQ
+    // Usa WSS (WebSockets Seguro) para que funcione en GitHub Pages / HTTPS
+    const brokerUrl = 'wss://broker.hivemq.com:8884/mqtt';
+
+    const client = mqtt.connect(brokerUrl, {
+      clientId: 'web_tecnopolis_' + Math.random().toString(16).substring(2, 8),
+      keepalive: 60
+    });
+
+    const statusEl = document.getElementById('status');
+    const tempEl = document.getElementById('temp');
+    const humEl = document.getElementById('hum');
+
+    // Evento: Conexión Exitosa
+    client.on('connect', () => {
+      statusEl.textContent = 'Conectado';
+      statusEl.className = 'status online';
+      console.log('Conectado a broker.hivemq.com');
+
+      // Suscribirse a la temperatura y humedad del ESP32
+      client.subscribe([TOPIC_TEMP, TOPIC_HUM], (err) => {
+        if (!err) console.log('Suscrito a los tópicos del DHT11');
+      });
+    });
+
+    // Evento: Desconexión / Error
+    client.on('offline', () => {
+      statusEl.textContent = 'Desconectado';
+      statusEl.className = 'status offline';
+    });
+
+    client.on('error', (err) => {
+      console.error('Error de conexión:', err);
+      statusEl.textContent = 'Error';
+      statusEl.className = 'status offline';
+    });
+
+    // Evento: Recepción de Datos desde el ESP32
+    client.on('message', (topic, payload) => {
+      const mensaje = payload.toString();
+      
+      if (topic === TOPIC_TEMP) {
+        tempEl.textContent = mensaje;
+      } else if (topic === TOPIC_HUM) {
+        humEl.textContent = mensaje;
+      }
+    });
+
+    // Función para publicar la orden al LED
+    function controlLed(estado) {
+      if (client.connected) {
+        client.publish(TOPIC_LED, estado);
+        console.log(`Enviado ${estado} a ${TOPIC_LED}`);
+      } else {
+        alert('No hay conexión con el servidor MQTT');
+      }
+    }
+  </script>
+</body>
+</html>
